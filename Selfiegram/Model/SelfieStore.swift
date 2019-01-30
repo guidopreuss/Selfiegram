@@ -117,9 +117,16 @@ final class SelfieStore
     /// Returns a list of Selfie Objects loaded from the disk
     /// - returns: an array of all selfies previously saved
     /// - Throws: 'SelfieStoreErroe' if it fails to load a selfie correctly from disk
-    func listSelfies() -> [Selfie]
+    func listSelfies() throws -> [Selfie]
     {
-        return []
+        // Get the list of files in the Documents directory
+        let contents = try FileManager.default.contentsOfDirectory(at: self.documentsFolder, includingPropertiesForKeys: nil)
+        // Get all files whose path extension is 'json'
+        // loas them as data and decode them from JSON
+        return try contents.filter {$0.pathExtension == "json" }
+            .map {try Data(contentsOf: $0)}
+            .map {try JSONDecoder().decode(Selfie.self, from: $0)}
+        
     }
     
     /// Deletes a selfie and its corresponding image from the disk
@@ -128,7 +135,7 @@ final class SelfieStore
     /// - Throws: 'SelfieStorageError' if it fails to delete the selfie from disk
     func delete(selfie: Selfie) throws
     {
-        throw SelfieStoreError.connotSaveImage(nil)
+        try delete(id: selfie.id)
     }
     
     /// Deletes a selfie and its corresponding image from disk
@@ -136,7 +143,23 @@ final class SelfieStore
     /// - Throws: 'SelfieStoreError' if it fails to delete the selfie from disk
     func delete(id: UUID) throws
     {
-        throw SelfieStoreError.connotSaveImage(nil)
+        let selfieDataFileName = "\(id.uuidString).json"
+        let imageFileName = "\(id.uuidString)-image.jpg"
+        
+        let selfieDataURL = self.documentsFolder.appendingPathComponent(selfieDataFileName)
+        let imageURL = self.documentsFolder.appendingPathComponent(imageFileName)
+        
+        // Remove the two files if they exits
+        if FileManager.default.fileExists(atPath: selfieDataURL.path)
+        {
+            try FileManager.default.removeItem(at: selfieDataURL)
+        }
+        if FileManager.default.fileExists(atPath: imageURL.path)
+        {
+            try FileManager.default.removeItem(at: imageURL)
+        }
+        // Wipe the image from the cache if it's there
+        imageCache[id] = nil
     }
     
     /// Attempts to load selfie from disk
@@ -144,7 +167,19 @@ final class SelfieStore
     /// - returns: the selfie with the matching id or nil of it does not exits
     func load(id: UUID) -> Selfie?
     {
-        return nil
+        let dataFileName = "\(id.uuidString).json"
+        let dataURL = self.documentsFolder.appendingPathComponent(dataFileName)
+        
+        // Attempt to load the data in this file and then attempt to convert the data into a Photo and return it
+        // return nil if any of these steps fail
+        if let data = try? Data(contentsOf: dataURL), let selfie = try? JSONDecoder().decode(Selfie.self, from: data)
+        {
+            return selfie
+        }
+        else
+        {
+            return nil
+        }
     }
     
     /// Attempts to save a selfie to disk
@@ -152,8 +187,12 @@ final class SelfieStore
     /// - Throws: 'SelfieStoreError' if it fails to write data
     func save(selfie: Selfie) throws
     {
-        throw SelfieStoreError.connotSaveImage(nil)
+        let selfieData = try JSONEncoder().encode(selfie)
+        
+        let fileName = "\(selfie.id.uuidString).json"
+        let destinationURL = self.documentsFolder.appendingPathComponent(fileName)
+        
+        try selfieData.write(to: destinationURL)
     }
-    
     
 }
